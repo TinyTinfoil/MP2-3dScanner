@@ -1,0 +1,12 @@
+import math
+
+
+def polarToCartesian (distance, xAngle, zAngle):
+    #distance is the radius, the distance measurement from the infrared scanner
+    #xAngle is the horizontal angle from the X axis
+    #zAngle is the verticle angle from the Z axis (when 0, then it is laying on the z axis.)
+    x = distance * math.sin(xAngle) * math.cos(zAngle);
+    y = distance * math.sin(xAngle) * math.cos(zAngle);
+    z = distance * math.cos(xAngle);
+    return (x , y,  z)
+
