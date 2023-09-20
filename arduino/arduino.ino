@@ -6,18 +6,12 @@ uint8_t pan_pin, tilt_pin;
 uint8_t analog = A0;
 uint16_t LOOP_INTERVAL = 20;
 
-enum mode {
-  BUSY = 0b000,
-  WRITE1 = 0b001,
-  WRITE2 = 0b010,
-  WRITE3 = 0b011,
-  WRITE4 = 0b100,
-  CHECKSUM = 0b101,
-  READ = 0b110,
-  RESEND = 0b111
-};
-enum mode action = READ;
-uint32_t loop_time;
+long int loop_time;
+
+enum mode {none = 0b0000, send = 0b0010, request_ack = 0b0001, ack_response = 0b0101, resend = 0b0011, error = 0b0100};
+enum mode action = none;
+
+bool completeTransfer = true;
 
 /*
 ** Returns a boolean value that indicates whether the current time, t, is later than some prior 
@@ -39,105 +33,91 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
 }
+uint8_t byte1,byte2,byte3,byte4;
 
+uint16_t last_sensor_data = 0;
 
 void loop() {
-  uint8_t data;
+  
   while(Serial.available())
   {
-    data = Serial.read();
-    receive_data(data);
+    byte1 = Serial.read();
+    byte2 = Serial.read();
+    byte3 = Serial.read();
+    byte4 = Serial.read();
   }
-  
-  if (completeTransfer){
-    for (uint8_t pos = panX; (panX>newpanX? pos >= newpanX : pos <= newpanX ); (panX>newpanX? pos -=1 :pos +=1 )) { // goes from 0 degrees to 180 degrees
-      // in steps of 1 degree
-      pan.write(pos);              // tell servo to go to position in variable 'pos'
-      delay(15);                       // waits 15ms for the servo to reach the position
-    }
-    for (uint8_t pos = tiltY; (tiltY> newtiltY? pos >= newtiltY : pos <= newtiltY ); (tiltY>newtiltY? pos -=1 :pos +=1 )) { // goes from 180 degrees to 0 degrees
-    tilt.write(pos);              // tell servo to go to position in variable 'pos'
-    delay(15);                       // waits 15ms for the servo to reach the position
-    }
-  }
-  uint8_t data_out = send_data();
-  if (data_out){
-    Serial.printLn(data_out);
-  }
-}
-uint16_t input_buffer_tilt = 0;
-uint16_t input_buffer_pan = 0;
-bool completeTransfer = true;
-uint8_t action = 0;
-uint8_t receive_data(uint8_t data){
-//   //Checks ending bits to determine operation
-//  // 000 - Busy
-//  // 001 - Write 1 (start write transfer) - 6 bits of tilt
-//  // 010 - Write 2 
-//  // 011 - Write 3- 6 bits of pan
-//  // 100 - write 4 - 6 bits of pan
-//  // 101 - Checksum (xor of data)
-//  // 110 - Read
-//  // 111 - Resend (resend read)
-  action = data & 0b00000111;
-  if (action == WRITE1){
-    completeTransfer = false;
-    input_buffer_tilt = 0;
-    input_buffer_tilt = data >> 3;
-  }
-  if (action == WRITE2){
-    input_buffer_tilt = (data >> 3) << 5 | input_buffer_tilt;
-  }
-  if (action == WRITE3){
-    input_buffer_pan = 0;
-    input_buffer_pan = data >> 3;
-  }
-  if (action == WRITE4){
-    input_buffer_pan = (data >> 3) << 5 | input_buffer_pan;
-  }
-  if (action == CHECKSUM){
-    uint8_t checksum = data >> 3;
-    uint16_t xor = input_buffer_tilt ^ input_buffer_pan;
-    xor = (xor >> 8) ^ xor;
-    if ((xor << 3) == checksum){
-      completeTransfer = true;
-      input_buffer_tilt = newtiltY;
-      input_buffer_pan = newpanX;
-    }
-    else{
-      completeTransfer = false;
-      send_data(RESEND);
-    }
-  }
-  if (action == RESEND){
-    send_data(WRITE1);
-  }
+  uint16_t data = receive_data(byte1, byte2, byte3, byte4);
+  // if (completeTransfer){
+  //   newpanX = data >> 8;
+  //   newtiltY = data & 0b0000000011111111;
+  //   for (uint8_t pos = panX; (panX>newpanX? pos >= newpanX : pos <= newpanX ); (panX>newpanX? pos -=1 :pos +=1 )) { // goes from 0 degrees to 180 degrees
+  //     // in steps of 1 degree
+  //     pan.write(pos);              // tell servo to go to position in variable 'pos'
+  //     delay(15);                       // waits 15ms for the servo to reach the position
+  //   }
+  //   for (uint8_t pos = tiltY; (tiltY> newtiltY? pos >= newtiltY : pos <= newtiltY ); (tiltY>newtiltY? pos -=1 :pos +=1 )) { // goes from 180 degrees to 0 degrees
+  //   tilt.write(pos);              // tell servo to go to position in variable 'pos'
+  //   delay(15);                       // waits 15ms for the servo to reach the position
+  //   }
+  // }
+  last_sensor_data = read_sensor();
+  action = resend;
+  send_data();
 }
 
-uint8_t output_buffer1 = 0;
-uint8_t output_buffer2 = 0;
-uint8_t checksum = 0;
-enum mode next_mode = READ; // Read is a placeholder state
-uint8_t send_data(uint8_t data){
-  if (action == READ || data == WRITE1){
-    uint16_t res = read_sensor();
-    // Set WRITE1, then WRITE2, then CHECKSUM
-    output_buffer1 = (res << 3) | WRITE1;
-    output_buffer2 = ((res >> 5) << 3) | WRITE2;
-    checksum = (((res >> 8) ^ res) << 3) | CHECKSUM;
-    next_mode = WRITE2;
-    return output_buffer1;
+
+
+uint8_t receive_data(byte header, byte data1, byte data2, byte terminator){
+  if (header >> 4 == 0b0010 && terminator & 0b00001111 == 0b1100){
+    uint8_t crc = header & 0b00001111;
+    uint16_t data = (data1 << 8) | data2;
+    uint8_t data_crc = ((data1 >> 4) ^ data1) ^ ((data2 >> 4) ^ data2);
+    action = terminator >> 4;
+    if (data_crc != crc){
+      action = resend;
+      completeTransfer = false;
+    }
+    if (action == request_ack){
+      action = ack_response;
+      completeTransfer = true;
+      return data;
+    }
+    if (action == send){
+      completeTransfer = false;
+      action = send;
+    }
+    if (action == resend){
+      completeTransfer = false;
+      action = send;
+    }
+    if (action == ack_response){
+      // noop
+    }
+  } 
+}
+
+uint8_t send_data(){
+  if (action == ack_response){
+    Serial.write(0b00100000);
+    Serial.write(0b00000000);
+    Serial.write(0b00000000);
+    Serial.write((ack_response << 4) | 0b1100);
   }
-  if (next_mode == WRITE2){
-    next_mode = CHECKSUM;
-    return output_buffer2;
+  if (action == resend){
+    Serial.write(0b00100000);
+    Serial.write(0b00000000);
+    Serial.write(0b00000000);
+    Serial.write((resend << 4) | 0b1100);
   }
-  if (next_mode == CHECKSUM){
-    next_mode = READ;
-    return checksum;
-  }
-  if (data == RESEND){
-    return RESEND;
+  if (action == send){
+    uint16_t data = last_sensor_data;
+    uint8_t data1 = (data << 8);
+    uint8_t data2 = 0b0000000011111111 & data;
+    uint8_t data_crc = ((data1 >> 4) ^ data1) ^ ((data2 >> 4) ^ data2);
+    Serial.write((0b0010 << 4) | data_crc);
+    Serial.write(data1);
+    Serial.write(data2);
+    Serial.write((request_ack << 4) | 0b1100);
   }
 }
 
