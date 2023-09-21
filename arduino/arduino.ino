@@ -6,12 +6,29 @@ uint8_t pan_pin, tilt_pin;
 uint8_t analog = A0;
 uint16_t LOOP_INTERVAL = 20;
 
+// Send - transmit data, Request Ack - request acknowledgement while also sending, Error CMD - error, extra bits define appropriate response from messager, cmd - command
+enum control_bits {send = 0b00, request_ack = 0b01, error_cmd = 0b10, cmd = 0b11};
+enum command {ack = 1, request_data = 2};
+
+
+struct bytes4 {
+  byte byte1;
+  byte byte2;
+  byte byte3;
+  byte byte4;
+};
+
+struct packet
+{
+  uint16_t data;
+  byte c_bits;
+};
+
 long int loop_time;
+enum mode {none, ack_response, gather_data};
+enum mode action = 0;
 
-enum mode {none = 0b0000, send = 0b0010, request_ack = 0b0001, ack_response = 0b0101, resend = 0b0011, error = 0b0100};
-enum mode action = none;
-
-bool completeTransfer = true;
+bool move = false;
 
 /*
 ** Returns a boolean value that indicates whether the current time, t, is later than some prior 
@@ -33,91 +50,66 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
 }
-uint8_t byte1,byte2,byte3,byte4;
 
 uint16_t last_sensor_data = 0;
 
 void loop() {
-  
-  while(Serial.available())
+  byte sentData[4] = {0,0,0,0};
+  if (Serial.available() >= 4)
   {
-    byte1 = Serial.read();
-    byte2 = Serial.read();
-    byte3 = Serial.read();
-    byte4 = Serial.read();
+    Serial.readBytes(sentData, 4);
+    receive_data(sentData);
+    while (Serial.available() > 0){
+      Serial.read();
+    }
   }
-  uint16_t data = receive_data(byte1, byte2, byte3, byte4);
-  // if (completeTransfer){
-  //   newpanX = data >> 8;
-  //   newtiltY = data & 0b0000000011111111;
-  //   for (uint8_t pos = panX; (panX>newpanX? pos >= newpanX : pos <= newpanX ); (panX>newpanX? pos -=1 :pos +=1 )) { // goes from 0 degrees to 180 degrees
-  //     // in steps of 1 degree
-  //     pan.write(pos);              // tell servo to go to position in variable 'pos'
-  //     delay(15);                       // waits 15ms for the servo to reach the position
-  //   }
-  //   for (uint8_t pos = tiltY; (tiltY> newtiltY? pos >= newtiltY : pos <= newtiltY ); (tiltY>newtiltY? pos -=1 :pos +=1 )) { // goes from 180 degrees to 0 degrees
-  //   tilt.write(pos);              // tell servo to go to position in variable 'pos'
-  //   delay(15);                       // waits 15ms for the servo to reach the position
-  //   }
-  // }
+
+  if (move){
+    for (uint8_t pos = panX; (panX>newpanX? pos >= newpanX : pos <= newpanX ); (panX>newpanX? pos -=1 :pos +=1 )) { // goes from 0 degrees to 180 degrees
+      // in steps of 1 degree
+      pan.write(pos);              // tell servo to go to position in variable 'pos'
+      delay(15);                       // waits 15ms for the servo to reach the position
+    }
+    for (uint8_t pos = tiltY; (tiltY> newtiltY? pos >= newtiltY : pos <= newtiltY ); (tiltY>newtiltY? pos -=1 :pos +=1 )) { // goes from 180 degrees to 0 degrees
+    tilt.write(pos);              // tell servo to go to position in variable 'pos'
+    delay(15);                       // waits 15ms for the servo to reach the position
+    }
+  }
   last_sensor_data = read_sensor();
-  action = resend;
+  action = ack_response;
   send_data();
 }
 
 
-
-uint8_t receive_data(byte header, byte data1, byte data2, byte terminator){
-  if (header >> 4 == 0b0010 && terminator & 0b00001111 == 0b1100){
-    uint8_t crc = header & 0b00001111;
-    uint16_t data = (data1 << 8) | data2;
-    uint8_t data_crc = ((data1 >> 4) ^ data1) ^ ((data2 >> 4) ^ data2);
-    action = terminator >> 4;
-    if (data_crc != crc){
-      action = resend;
-      completeTransfer = false;
+void receive_data(byte data[10]){
+  struct packet packet = depacketify(data);
+  if (packet.c_bits == cmd){
+    if (packet.data == request_data){
+      action = gather_data;
+      move = false;
+      return;
     }
-    if (action == request_ack){
-      action = ack_response;
-      completeTransfer = true;
-      return data;
-    }
-    if (action == send){
-      completeTransfer = false;
-      action = send;
-    }
-    if (action == resend){
-      completeTransfer = false;
-      action = send;
-    }
-    if (action == ack_response){
-      // noop
-    }
-  } 
+    return;
+  }
+  if (packet.c_bits == request_ack){ // the python script will always request acknowledgment for servo movement, or keep sending data
+    action = ack_response;
+    send_data();
+    move = true; // Thus, the servo shall move
+    newpanX = packet.data >> 8;
+    newtiltY = packet.data & 0b0000000011111111;
+    return;
+  }
+  action = none;
+  return;
 }
 
-uint8_t send_data(){
+void send_data(){
+  Serial.flush();
   if (action == ack_response){
-    Serial.write(0b00100000);
-    Serial.write(0b00000000);
-    Serial.write(0b00000000);
-    Serial.write((ack_response << 4) | 0b1100);
+    Serial.write(packetify(ack,cmd));
   }
-  if (action == resend){
-    Serial.write(0b00100000);
-    Serial.write(0b00000000);
-    Serial.write(0b00000000);
-    Serial.write((resend << 4) | 0b1100);
-  }
-  if (action == send){
-    uint16_t data = last_sensor_data;
-    uint8_t data1 = (data << 8);
-    uint8_t data2 = 0b0000000011111111 & data;
-    uint8_t data_crc = ((data1 >> 4) ^ data1) ^ ((data2 >> 4) ^ data2);
-    Serial.write((0b0010 << 4) | data_crc);
-    Serial.write(data1);
-    Serial.write(data2);
-    Serial.write((request_ack << 4) | 0b1100);
+  if (action == gather_data){
+    Serial.write(packetify(last_sensor_data,send)); // no need for request_ack, since the python script will keep requesting data until it has enough
   }
 }
 
@@ -134,4 +126,35 @@ uint16_t read_sensor(){
     loop_time = t;
     return res;
   }
+}
+
+
+
+enum control_bits c_bits = error_cmd;
+// commands sent with command bit
+
+
+uint32_t packetify(uint16_t data, control_bits c_bits){
+  byte data1 = (data >> 8);
+  byte data2 = (data & 0b0000000011111111);
+  byte dpacket1 = (data1 >> 2) << 1 | 0b00000001;
+  byte dpacket2 = (data2 >> 2) << 1 | 0b10000000;
+  byte endpacket = (data1 & 0b0000000000000011) << 5  | (data2 & 0b0000000000000011) << 3 | c_bits << 1;
+  uint32_t packet = (0b11111111 << 24) | (dpacket1 << 16) | (dpacket2 << 8) | endpacket;
+  return packet;
+}
+
+
+packet depacketify(byte data[4]){
+  byte endbit_data_1 = data[4] >> 5;
+  byte endbit_data_2 = (data[4] & 0b00011000) >> 3;
+  byte data1 = (data[1] >> 1) << 2 | endbit_data_1;
+  byte data2 = ((data[2] & 0b01111110) >> 1) << 2 | endbit_data_2;
+  byte c_bits = (data[4] & 0b00000110) >> 1;
+  uint16_t data_a = (data1 << 8) | data2;
+  return {data_a, c_bits};
+}
+
+bool is_packet_valid(byte data[4]){
+  return (data[0] == 0b11111111 && data[1] & 0b10000001 == 0b00000001 && data[2] & 0b10000001 == 0b10000000 && data[3] & 0b10000001 == 0b00000000);
 }
