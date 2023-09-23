@@ -33,12 +33,32 @@ void setup() {
   tilt.write(tilt_calibration);
   Serial.println("Ready");
   while (Serial.available() - 4 < 0) {}     //wait for data available (any)
+  uint16_t sensor_vals[100];
+  for (int i = 0; i < 100; i++){
+    sensor_vals[i] = read_sensor();
+    delay(1);
+  }
+  Serial.println(findMedian(sensor_vals,100));
 }
 
+uint16_t cmpfunc(const void* a, const void* b)
+{
+    return (*(uint16_t*)a - *(uint16_t*)b);
+}
+
+uint16_t findMedian(uint16_t a[], uint16_t n)
+{
+    // First we sort the array
+    qsort(a, n, sizeof(uint16_t), cmpfunc);
+ 
+    // check for even case
+    if (n % 2 != 0)
+        return (uint16_t)a[n / 2];
+ 
+    return (uint16_t)(a[(n - 1) / 2] + a[n / 2]) / 2.0;
+}
 
 void loop() {
-  Serial.println(read_sensor());
-  Serial.print(",");
 }
 
 long int t;
