@@ -28,7 +28,7 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
   int pan_calibration = 55;
-  int tilt_calibration = 0;
+  int tilt_calibration = 45;
   pan.write(pan_calibration);
   tilt.write(tilt_calibration);
   Serial.println("Ready");
@@ -38,6 +38,7 @@ void setup() {
 
 void loop() {
   Serial.println(read_sensor());
+  Serial.print(",");
 }
 
 long int t;

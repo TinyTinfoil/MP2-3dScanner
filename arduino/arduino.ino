@@ -1,7 +1,7 @@
 #include <Servo.h>
 
 Servo pan, tilt;
-uint8_t panX = 0, tiltY = 0, newpanX = 0, newtiltY = 0;
+uint16_t panX = 0, tiltY = 0, newpanX = 0, newtiltY = 0;
 uint8_t pan_pin = 10;
 uint8_t tilt_pin = 11;
 uint8_t analog = A0;
@@ -35,8 +35,9 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
   move = false;
-  int pan_calibration = 55;
-  pan.write(pan_calibration);
+  uint16_t pan_calibration = 55;
+  pan_calibration = map(pan_calibration, 0, 180, 1000, 2000);
+  pan.writeMicroseconds(pan_calibration);
   Serial.println("Ready");
   while (Serial.available() - 4 < 0) {}     //wait for data available (any)
   
@@ -45,29 +46,29 @@ void setup() {
   char s[4];
   char t[3];
   char p[3];
-  int num_points = 180 - 55;
+  uint16_t num_points = (2000 - pan_calibration)/100;
   uint16_t sensor_data[num_points];
   uint16_t panHistory[num_points];
   Serial.print("[");
-  for (tiltY = 10; tiltY <= 100; tiltY += 1){
+  for (tiltY = 1000; tiltY <= 2000; tiltY += 10){
   // delay(5000);
     Serial.print("[");
-    int i = 0;
-    for (panX = pan_calibration; panX <= 180; panX += 1){
-      pan.write(panX);              // tell servo to "scan", left to right
+    uint16_t i = 0;
+    for (panX = pan_calibration; panX <= 2000; panX += 100){
+      pan.writeMicroseconds(panX);              // tell servo to "scan", left to right
       delay(100); // wait for it to go there
       sensor_data[i] = read_sensor(); // read the data then
       panHistory[i] = panX;
       i++;
     }
-    for (int i = 0; i < num_points; i++){
+    for (uint16_t i = 0; i < num_points; i++){
       Serial.print("("+String(sensor_data[i])+","+String(tiltY)+","+String(panHistory[i])+")");
       Serial.print(",");
     }    
     Serial.println("],");
-    pan.write(0);
+    pan.writeMicroseconds(pan_calibration);
     delay(200);
-    tilt.write(tiltY);
+    tilt.writeMicroseconds(tiltY);
     delay(200);
   }
   Serial.print("]");
