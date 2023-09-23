@@ -2,7 +2,8 @@
 
 Servo pan, tilt;
 uint8_t panX = 0, tiltY = 0, newpanX = 0, newtiltY = 0;
-uint8_t pan_pin, tilt_pin;
+uint8_t pan_pin = 10;
+uint8_t tilt_pin = 11;
 uint8_t analog = A0;
 uint16_t LOOP_INTERVAL = 20;
 
@@ -34,35 +35,50 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
   move = false;
+  int pan_calibration = 55;
+  pan.write(pan_calibration);
   Serial.println("Ready");
   while (Serial.available() - 4 < 0) {}     //wait for data available (any)
+  
+  uint16_t last_sensor_data = 0;
+  uint8_t pos;
+  char s[4];
+  char t[3];
+  char p[3];
+  int num_points = 180 - 55;
+  uint16_t sensor_data[num_points];
+  uint16_t panHistory[num_points];
+  Serial.print("[");
+  for (tiltY = 10; tiltY <= 100; tiltY += 1){
+  // delay(5000);
+    Serial.print("[");
+    int i = 0;
+    for (panX = pan_calibration; panX <= 180; panX += 1){
+      pan.write(panX);              // tell servo to "scan", left to right
+      delay(100); // wait for it to go there
+      sensor_data[i] = read_sensor(); // read the data then
+      panHistory[i] = panX;
+      i++;
+    }
+    for (int i = 0; i < num_points; i++){
+      Serial.print("("+String(sensor_data[i])+","+String(tiltY)+","+String(panHistory[i])+")");
+      Serial.print(",");
+    }    
+    Serial.println("],");
+    pan.write(0);
+    delay(200);
+    tilt.write(tiltY);
+    delay(200);
+  }
+  Serial.print("]");
 }
 
-uint16_t last_sensor_data = 0;
 
 void loop() {
-
-  // if (move){
-  //   newpanX = 90;
-  //   newtiltY = 90;
-  //   for (uint8_t pos = panX; (panX>newpanX? pos >= newpanX : pos <= newpanX ); (panX>newpanX? pos -=1 :pos +=1 )) { // goes from 0 degrees to 180 degrees
-  //     // in steps of 1 degree
-  //     pan.write(pos);              // tell servo to go to position in variable 'pos'
-  //     delay(15);                       // waits 15ms for the servo to reach the position
-  //     panX = pos;
-  //   }
-  //   for (uint8_t pos = tiltY; (tiltY> newtiltY? pos >= newtiltY : pos <= newtiltY ); (tiltY>newtiltY? pos -=1 :pos +=1 )) { // goes from 180 degrees to 0 degrees
-  //     tilt.write(pos);              // tell servo to go to position in variable 'pos'
-  //     delay(15);                       // waits 15ms for the servo to reach the position
-  //     tiltY = pos;
-  //   }
-
-  // }
-  Serial.println(read_sensor());
 }
 
 long int t;
-uint8_t x,y,z,res;
+uint16_t x,y,z,res;
 
 uint16_t read_sensor(){
   t = millis();
