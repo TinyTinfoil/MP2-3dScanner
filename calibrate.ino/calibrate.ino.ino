@@ -55,7 +55,7 @@ uint16_t findMedian(uint16_t a[], uint16_t n)
     if (n % 2 != 0)
         return (uint16_t)a[n / 2];
  
-    return (uint16_t)(a[(n - 1) / 2] + a[n / 2]) / 2.0;
+    return (uint16_t)(a[(n - 1) / 2] + a[n / 2]) / 2;
 }
 
 void loop() {

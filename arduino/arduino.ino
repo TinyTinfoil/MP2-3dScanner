@@ -1,7 +1,7 @@
 #include <Servo.h>
 
 Servo pan, tilt;
-uint16_t panX = 0, tiltY = 0, newpanX = 0, newtiltY = 0;
+uint16_t panX = 0, tiltY = 0;
 uint8_t pan_pin = 10;
 uint8_t tilt_pin = 11;
 uint8_t analog = A0;
@@ -35,45 +35,69 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
   move = false;
-  uint16_t pan_calibration = 55;
-  pan_calibration = map(pan_calibration, 0, 180, 1000, 2000);
-  pan.writeMicroseconds(pan_calibration);
+  uint16_t pan_start = 20;
+  uint16_t pan_end = 80;
+  pan_start = map(pan_start, 0, 180, 544, 2400);
+  pan_end = map(pan_end, 0, 180, 544, 2400);
+  uint16_t tilt_start = 50 - 20; // midpoint at 50 degrees
+  uint16_t tilt_end = 50 + 20;
+  tilt_start = map(tilt_start, 0, 180, 544, 2400);
+  tilt_end = map(tilt_end, 0, 180, 544, 2400);
+  pan.writeMicroseconds(pan_start);
+  tilt.writeMicroseconds(tilt_start);
   Serial.println("Ready");
   while (Serial.available() - 4 < 0) {}     //wait for data available (any)
   
   uint16_t last_sensor_data = 0;
-  uint8_t pos;
-  char s[4];
-  char t[3];
-  char p[3];
-  uint16_t num_points = (2000 - pan_calibration)/100;
+  int pan_res = 10;
+  int tilt_res = 10;
+  uint16_t num_points = (pan_end - pan_start)/pan_res;
   uint16_t sensor_data[num_points];
   uint16_t panHistory[num_points];
-  Serial.print("[");
-  for (tiltY = 1000; tiltY <= 2000; tiltY += 10){
-  // delay(5000);
-    Serial.print("[");
+  Serial.println("[");
+  for (tiltY = tilt_start; tiltY <= tilt_end; tiltY += tilt_res){
     uint16_t i = 0;
-    for (panX = pan_calibration; panX <= 2000; panX += 100){
+    for (panX = pan_start; panX <= pan_end; panX += pan_res){
       pan.writeMicroseconds(panX);              // tell servo to "scan", left to right
       delay(100); // wait for it to go there
-      sensor_data[i] = read_sensor(); // read the data then
+      uint16_t sensor_vals[100];
+      for (int i = 0; i < 100; i++){
+        sensor_vals[i] = read_sensor();
+        delay(1);
+      }
+      sensor_data[i] = findMedian(sensor_vals,100);
       panHistory[i] = panX;
       i++;
     }
     for (uint16_t i = 0; i < num_points; i++){
-      Serial.print("("+String(sensor_data[i])+","+String(tiltY)+","+String(panHistory[i])+")");
-      Serial.print(",");
-    }    
-    Serial.println("],");
-    pan.writeMicroseconds(pan_calibration);
+      Serial.print(String(panHistory[i])+" "+String(tiltY)+" "+String(sensor_data[i]));
+      Serial.print(";");
+    }
+    pan.writeMicroseconds(pan_start);
     delay(200);
     tilt.writeMicroseconds(tiltY);
     delay(200);
+    Serial.println();
   }
-  Serial.print("]");
+  Serial.println("]");
 }
 
+uint16_t cmpfunc(const void* a, const void* b)
+{
+    return (*(uint16_t*)a - *(uint16_t*)b);
+}
+
+uint16_t findMedian(uint16_t a[], uint16_t n)
+{
+    // First we sort the array
+    qsort(a, n, sizeof(uint16_t), cmpfunc);
+ 
+    // check for even case
+    if (n % 2 != 0)
+        return (uint16_t)a[n / 2];
+ 
+    return (uint16_t)(a[(n - 1) / 2] + a[n / 2]) / 2;
+}
 
 void loop() {
 }
