@@ -35,12 +35,12 @@ void setup() {
   tilt.attach(tilt_pin);
   loop_time = millis();
   move = false;
-  uint16_t pan_start = 20;
+  uint16_t pan_start = 0;
   uint16_t pan_end = 80;
   pan_start = map(pan_start, 0, 180, 544, 2400);
   pan_end = map(pan_end, 0, 180, 544, 2400);
-  uint16_t tilt_start = 50 - 20; // midpoint at 50 degrees
-  uint16_t tilt_end = 50 + 20;
+  uint16_t tilt_start = 10; // midpoint at 50 degrees
+  uint16_t tilt_end = 80;
   tilt_start = map(tilt_start, 0, 180, 544, 2400);
   tilt_end = map(tilt_end, 0, 180, 544, 2400);
   pan.writeMicroseconds(pan_start);
