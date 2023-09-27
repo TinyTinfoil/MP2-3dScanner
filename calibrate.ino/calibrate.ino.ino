@@ -1,64 +1,61 @@
 #include <Servo.h>
-
+// Copied from main program
 Servo pan, tilt;
-uint8_t panX = 0, tiltY = 0, newpanX = 0, newtiltY = 0;
+uint8_t panX = 0, tiltY = 0;
 uint8_t pan_pin = 10;
 uint8_t tilt_pin = 11;
 uint8_t analog = A0;
 uint16_t LOOP_INTERVAL = 20;
 long loop_time = 0;
 
-/*
-** Returns a boolean value that indicates whether the current time, t, is later than some prior 
-** time, t0, plus a given interval, dt.  The condition accounts for timer overflow / wraparound.
-*/
-bool it_is_time(uint32_t t, uint32_t t0, uint16_t dt) {
-  return ((t >= t0) && (t - t0 >= dt)) ||         // The first disjunct handles the normal case
-            ((t < t0) && (t + (~t0) + 1 >= dt));  //   while the second handles the overflow case
-}
-
 void setup() {
   // put your setup code here, to run once:
   // start the serial port
-  //
-  long baudRate = 9600;       // NOTE1: The baudRate for sending & receiving programs must match
-  Serial.begin(baudRate);     // NOTE2: Set the baudRate to 115200 for faster communication
-  Serial.setTimeout(1);
-  pan.attach(pan_pin);
+  long baudRate = 9600;       //The baudRate for sending & receiving programs must match
+  Serial.begin(baudRate);     
+  Serial.setTimeout(1); // Set the serial timeout to 1 ms
+  pan.attach(pan_pin); // Attach servo pins
   tilt.attach(tilt_pin);
-  loop_time = millis();
-  int pan_calibration = 55;
+  loop_time = millis(); // Used for measuring sensor
+  int pan_calibration = 55; // Set pan and tilt to calibrated values to be roughly straight onto the target
   int tilt_calibration = 45;
-  pan.write(pan_calibration);
+  pan.write(pan_calibration); 
   tilt.write(tilt_calibration);
-  Serial.println("Ready");
-  while (Serial.available() - 4 < 0) {}     //wait for data available (any)
-  uint16_t sensor_vals[100];
+  Serial.println("Ready"); // Send ready message to serial monitor
+  while (Serial.available() - 4 < 0) {}     //Wait for data available (any)
+  uint16_t sensor_vals[100]; // Create array to store sensor values
   for (int i = 0; i < 100; i++){
-    sensor_vals[i] = read_sensor();
+    sensor_vals[i] = read_sensor(); // Read sensor 100 times and store values in array
     delay(1);
   }
-  Serial.println(findMedian(sensor_vals,100));
+  Serial.println(findMedian(sensor_vals,100)); // Send median of sensor values to serial monitor
+  //Exit
 }
 
+// Comparing function for qsort - copied from main program
 uint16_t cmpfunc(const void* a, const void* b)
 {
     return (*(uint16_t*)a - *(uint16_t*)b);
 }
 
+// findMedian function - copied from main program
 uint16_t findMedian(uint16_t a[], uint16_t n)
 {
-    // First we sort the array
     qsort(a, n, sizeof(uint16_t), cmpfunc);
- 
-    // check for even case
     if (n % 2 != 0)
         return (uint16_t)a[n / 2];
- 
     return (uint16_t)(a[(n - 1) / 2] + a[n / 2]) / 2;
 }
 
 void loop() {
+  // Nothing needs to be done here continuously
+}
+
+// Same as in the main program
+
+bool it_is_time(uint32_t t, uint32_t t0, uint16_t dt) {
+  return ((t >= t0) && (t - t0 >= dt)) ||         
+            ((t < t0) && (t + (~t0) + 1 >= dt));  
 }
 
 long int t;
